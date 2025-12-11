@@ -1,0 +1,336 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===== ROLES DE LOS USUARIOS =====
+
+enum Role{
+  STUDENT
+  TEACHER
+  SECRETARY
+  ADMIN
+}
+
+model User{
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  phone         String?
+  avatar        String?
+  role          Role
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  student       Student?
+  teacher       Teacher?
+  secretary     Secretary?
+
+  @@index([email])
+  @@index([role])
+}
+
+// ============= ESTUDIANTES =============
+model Student {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  studentCode   String    @unique
+  gradeId       String
+  grade         Grade     @relation(fields: [gradeId], references: [id])
+  
+  dateOfBirth   DateTime
+  address       String?
+  guardian      String
+  guardianPhone String
+  
+  enrollments   Enrollment[]
+  grades        StudentGrade[]
+  assignments   AssignmentSubmission[]
+  payments      Payment[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([gradeId])
+  @@index([studentCode])
+}
+
+// ============= PROFESORES =============
+model Teacher {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  teacherCode   String    @unique
+  specialty     String
+  salary        Decimal   @db.Decimal(10, 2)
+  hireDate      DateTime
+  
+  subjects      SubjectTeacher[]
+  grades        Grade[]  // Profesores guía
+  assignments   Assignment[]
+  salaryPayments SalaryPayment[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([teacherCode])
+}
+
+// ============= SECRETARIA =============
+model Secretary {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  department    String
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============= CURSOS/GRADOS =============
+model Grade {
+  id            String    @id @default(cuid())
+  name          String    @unique // "1° Básico", "2° Básico", etc.
+  level         Int       // 1-11
+  section       String?   // A, B, C
+  
+  guideTeacherId String?  @unique
+  guideTeacher   Teacher?  @relation(fields: [guideTeacherId], references: [id])
+  
+  students      Student[]
+  subjects      SubjectGrade[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([level])
+}
+
+// ============= MATERIAS =============
+model Subject {
+  id            String    @id @default(cuid())
+  name          String    @unique // Matemáticas, Lenguaje, etc.
+  description   String?
+  
+  teachers      SubjectTeacher[]
+  grades        SubjectGrade[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+// Relación Materia-Profesor
+model SubjectTeacher {
+  id            String    @id @default(cuid())
+  subjectId     String
+  subject       Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId     String
+  teacher       Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime  @default(now())
+
+  @@unique([subjectId, teacherId])
+  @@index([subjectId])
+  @@index([teacherId])
+}
+
+// Relación Materia-Grado (qué materias tiene cada grado)
+model SubjectGrade {
+  id            String    @id @default(cuid())
+  subjectId     String
+  subject       Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  gradeId       String
+  grade         Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  
+  enrollments   Enrollment[]
+  assignments   Assignment[]
+  
+  createdAt     DateTime  @default(now())
+
+  @@unique([subjectId, gradeId])
+  @@index([subjectId])
+  @@index([gradeId])
+}
+
+// Inscripción de estudiante en una materia
+model Enrollment {
+  id              String      @id @default(cuid())
+  studentId       String
+  student         Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectGradeId  String
+  subjectGrade    SubjectGrade @relation(fields: [subjectGradeId], references: [id], onDelete: Cascade)
+  
+  academicYear    Int         // 2024, 2025, etc.
+  semester        Int?        // 1, 2 (opcional)
+  
+  grades          StudentGrade[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([studentId, subjectGradeId, academicYear])
+  @@index([studentId])
+  @@index([subjectGradeId])
+}
+
+// ============= TAREAS =============
+model Assignment {
+  id              String      @id @default(cuid())
+  title           String
+  description     String      @db.Text
+  
+  subjectGradeId  String
+  subjectGrade    SubjectGrade @relation(fields: [subjectGradeId], references: [id], onDelete: Cascade)
+  teacherId       String
+  teacher         Teacher     @relation(fields: [teacherId], references: [id])
+  
+  dueDate         DateTime
+  maxScore        Decimal     @db.Decimal(5, 2)
+  attachments     String[]    // URLs de archivos
+  
+  submissions     AssignmentSubmission[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([subjectGradeId])
+  @@index([teacherId])
+  @@index([dueDate])
+}
+
+model AssignmentSubmission {
+  id              String      @id @default(cuid())
+  assignmentId    String
+  assignment      Assignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  content         String?     @db.Text
+  attachments     String[]    // URLs de archivos
+  score           Decimal?    @db.Decimal(5, 2)
+  feedback        String?     @db.Text
+  submittedAt     DateTime    @default(now())
+  gradedAt        DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([assignmentId, studentId])
+  @@index([assignmentId])
+  @@index([studentId])
+}
+
+// ============= CALIFICACIONES =============
+enum GradeType {
+  EXAM
+  QUIZ
+  ASSIGNMENT
+  PARTICIPATION
+  FINAL
+}
+
+model StudentGrade {
+  id              String      @id @default(cuid())
+  enrollmentId    String
+  enrollment      Enrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  type            GradeType
+  name            String      // "Examen Parcial 1", "Tarea 3", etc.
+  score           Decimal     @db.Decimal(5, 2)
+  maxScore        Decimal     @db.Decimal(5, 2)
+  weight          Decimal?    @db.Decimal(5, 2) // Peso en la nota final (%)
+  
+  date            DateTime    @default(now())
+  comments        String?     @db.Text
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([enrollmentId])
+  @@index([studentId])
+  @@index([type])
+}
+
+// ============= PAGOS Y FINANZAS =============
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// Mensualidades de estudiantes
+model Payment {
+  id              String        @id @default(cuid())
+  studentId       String
+  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  amount          Decimal       @db.Decimal(10, 2)
+  month           Int           // 1-12
+  year            Int
+  concept         String        // "Mensualidad Enero 2024"
+  
+  status          PaymentStatus @default(PENDING)
+  dueDate         DateTime
+  paidDate        DateTime?
+  
+  paymentMethod   String?       // "Efectivo", "Transferencia", "Tarjeta"
+  transactionId   String?
+  receipt         String?       // URL del comprobante
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([month, year])
+}
+
+// Pagos de salarios a profesores
+model SalaryPayment {
+  id              String        @id @default(cuid())
+  teacherId       String
+  teacher         Teacher       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  amount          Decimal       @db.Decimal(10, 2)
+  month           Int           // 1-12
+  year            Int
+  concept         String        // "Salario Enero 2024"
+  
+  status          PaymentStatus @default(PENDING)
+  dueDate         DateTime
+  paidDate        DateTime?
+  
+  paymentMethod   String?
+  transactionId   String?
+  receipt         String?
+  
+  bonuses         Decimal?      @db.Decimal(10, 2)
+  deductions      Decimal?      @db.Decimal(10, 2)
+  netAmount       Decimal       @db.Decimal(10, 2) // amount + bonuses - deductions
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([teacherId])
+  @@index([status])
+  @@index([month, year])
+}
