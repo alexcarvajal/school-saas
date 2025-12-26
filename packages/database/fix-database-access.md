@@ -54,3 +54,8 @@ brew services list | grep postgresql
 pg_isready -h localhost -p 5432
 ```
 
+
+
+
+
+
